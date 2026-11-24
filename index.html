@@ -104,7 +104,7 @@ a{color:inherit;text-decoration:none}
 .tq .o{color:var(--muted)}
 
 /* ---------- barra ---------- */
-.topbar{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
+.topbar{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--bg) 96%,transparent);border-bottom:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
 .tb-in{display:flex;align-items:center;gap:22px;min-height:56px;max-width:1360px;margin:0 auto;padding-inline:24px}
 .brand{display:inline-flex;align-items:center;gap:9px;font-family:var(--f-display);font-weight:800;font-size:17px;letter-spacing:-.01em;white-space:nowrap}
 .brand-ic{width:22px;height:22px;fill:none;stroke:var(--acc);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
@@ -543,8 +543,9 @@ function frame(now) {
     for (let j = 0; j <= i; j++) {
       const gl = glow[i * 8 + j]; glow[i * 8 + j] *= .93;
       ctx.fillStyle = hexA(COL.ink, .22 + gl * .7);
-      if (glowOn && gl > .05) { ctx.shadowColor = COL.ink; ctx.shadowBlur = 14 * gl; }
-      ctx.beginPath(); ctx.arc(nx(i), ny(i, j), 2 + gl * 2.2, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+      // brillo con un halo suave (círculo grande y transparente): se ve igual que una sombra difusa y cuesta mucho menos
+      if (glowOn && gl > .05) { const fs = ctx.fillStyle; ctx.fillStyle = hexA(COL.ink, .12 * gl); ctx.beginPath(); ctx.arc(nx(i), ny(i, j), 4 + gl * 9, 0, 7); ctx.fill(); ctx.fillStyle = fs; }
+      ctx.beginPath(); ctx.arc(nx(i), ny(i, j), 2 + gl * 2.2, 0, 7); ctx.fill();
     }
   }
   // 5) hojas: verdes si el call paga, rojas si no; su tamaño es su probabilidad. A la derecha, lo que paga cada una.
@@ -553,8 +554,9 @@ function frame(now) {
     const S = head * u ** j * d ** (STEPS - j), x = nx(STEPS), y = ny(STEPS, j), pr = comb(STEPS, j) * p ** j * (1 - p) ** (STEPS - j), win = S > Kshow, c = win ? COL.up : COL.down;
     const pl = Math.max(0, 1 - (now - pulse[j]) / 700), r = (3.5 + pr * 30 + pl * 4) * sc;
     if (glowOn) { ctx.globalAlpha = .16 + pl * .22; ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, narrow() ? r * 1.35 + 3 : r * 2.1 + 6, 0, 7); ctx.fill(); }
-    ctx.globalAlpha = .95; ctx.fillStyle = c; if (glowOn) { ctx.shadowColor = c; ctx.shadowBlur = 12 + pl * 22; }
-    ctx.beginPath(); ctx.arc(x, y, Math.max(0, r), 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+    if (glowOn) { ctx.globalAlpha = .1 + pl * .14; ctx.beginPath(); ctx.arc(x, y, r + 5 + pl * 10, 0, 7); ctx.fill(); }   // halo en vez de sombra difusa
+    ctx.globalAlpha = .95; ctx.fillStyle = c;
+    ctx.beginPath(); ctx.arc(x, y, Math.max(0, r), 0, 7); ctx.fill();
     if (pl > 0) { ctx.globalAlpha = pl * .55; ctx.lineWidth = 1.6; ctx.strokeStyle = c; ctx.beginPath(); ctx.arc(x, y, r + 10 * (1 - pl) + 4, 0, 7); ctx.stroke(); }
     ctx.globalAlpha = 1;
   }
