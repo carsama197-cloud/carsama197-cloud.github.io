@@ -655,15 +655,22 @@ const qVal = q => q.kind === 'S' ? q.a.cur : q.kind === 'C' ? bs(q.a.cur, q.a.K,
 const qRef = q => q.kind === 'S' ? q.a.prev : mid(q.kind === 'C' ? q.a.c : q.a.p);   // acciones: cambio contra el cierre anterior
 const qHTML = q => `<span class="tq"><b>${q.label}</b><span class="p" data-q="${q.id}">${qVal(q).toFixed(2)}</span><span class="c" data-c="${q.id}"></span></span>`;
 tape.innerHTML = QUOTES.map(qHTML).join('') + QUOTES.map(qHTML).join('');
-const flash = (el, up) => { el.classList.remove('fu', 'fd'); void el.offsetWidth; el.classList.add(up ? 'fu' : 'fd'); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.remove('fu', 'fd'))); };
-const last = {};
+// parpadeo verde/rojo con una animación del navegador: no obliga a recalcular el acomodo de la página
+// (antes se leía offsetWidth en cada número y eso recalculaba toda la cinta unas 50 veces seguidas)
+const flash = (el, up) => {
+  if (RM) return; const c = up ? COL.up : COL.down;
+  el.animate(el.tagName === 'TD' ? [{ color: c }, { color: c, offset: .3 }, {}] : [{ backgroundColor: hexA(c, .24) }, { backgroundColor: hexA(c, .24), offset: .2 }, { backgroundColor: hexA(c, 0) }], { duration: 900, easing: 'ease-out' });
+};
+const last = {}, tapeEls = {};
 function tapeTick() {
   // las otras acciones también se mueven; Apple viene del mercado de la portada
   Object.keys(SNAP).filter(t => t !== 'AAPL').forEach(t => { const a = SNAP[t]; a.cur = a.cur - 0.07 * (a.cur - a.S) + a.cur * 0.003 * gauss(); });
   QUOTES.forEach(q => {
     const v = qVal(q), ch = (v / qRef(q) - 1) * 100, was = last[q.id];
-    $$(`[data-q="${q.id}"]`, tape).forEach(el => { el.textContent = v.toFixed(2); if (was != null && Math.abs(v - was) > 0.004) flash(el, v > was); });
-    $$(`[data-c="${q.id}"]`, tape).forEach(el => { el.textContent = (ch >= 0 ? '▲' : '▼') + Math.abs(ch).toFixed(2) + '%'; el.className = 'c ' + (ch >= 0 ? 'u' : 'd'); });
+    const els = tapeEls[q.id] || (tapeEls[q.id] = { p: $$(`[data-q="${q.id}"]`, tape), c: $$(`[data-c="${q.id}"]`, tape) });   // se buscan una sola vez
+    const txt = v.toFixed(2), chTxt = (ch >= 0 ? '▲' : '▼') + Math.abs(ch).toFixed(2) + '%', cls = 'c ' + (ch >= 0 ? 'u' : 'd');
+    els.p.forEach(el => { if (el.textContent !== txt) { el.textContent = txt; if (was != null && Math.abs(v - was) > 0.004) flash(el, v > was); } });
+    els.c.forEach(el => { if (el.textContent !== chTxt) el.textContent = chTxt; if (el.className !== cls) el.className = cls; });
     last[q.id] = v;
   });
 }
