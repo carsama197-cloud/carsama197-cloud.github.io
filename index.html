@@ -414,16 +414,6 @@ a{color:inherit;text-decoration:none}
       <span class="lg-note">Estos colores significan lo mismo en todas las páginas.</span>
     </div>
   </section>
-  <!-- final: una gráfica gigante de un call que se dibuja mientras bajas -->
-  <section class="finale" id="final" aria-labelledby="fT">
-    <svg class="fin-svg" id="finSvg" viewBox="0 0 1200 420" preserveAspectRatio="none" aria-hidden="true"></svg>
-    <span class="f-dot" id="finDot" aria-hidden="true"></span>
-    <div class="fin-copy reveal">
-      <h2 id="fT">Pierdes poco si te equivocas. Ganas mucho si aciertas.</h2>
-      <p>Esa es la forma de comprar un call, y la vas a dibujar tú mismo en la primera página.</p>
-      <a class="btn solid big" href="opciones-basicas/">Empezar con opciones básicas</a>
-    </div>
-  </section>
 </main>
 
 <footer class="foot">
@@ -511,10 +501,10 @@ function step() {
   readout(); tapeTick(); chainTick();
 }
 // futuros que viajan por el árbol
-const parts = [], pulse = new Float64Array(STEPS + 1);
+const parts = [], pulse = new Float64Array(STEPS + 1), glow = new Float32Array(8 * (STEPS + 1));   // glow: qué tan encendido está cada nodo
 function treeP() { const dt = T / STEPS, u = Math.exp(SIG * Math.sqrt(dt)), d = 1 / u; return (Math.exp(RF * dt) - d) / (u - d); }
 function newPart(t = 0) { return { t, path: Array.from({ length: STEPS }, () => Math.random() < treeP() ? 1 : 0), sp: 0.55 + Math.random() * 0.5, px: null, py: null, born: performance.now() }; }
-for (let i = 0; i < 46; i++) parts.push(newPart(-Math.random() * STEPS));
+for (let i = 0; i < 52; i++) parts.push(newPart(-Math.random() * STEPS));
 const comb = (n, k) => { let r = 1; for (let i = 1; i <= k; i++) r = r * (n - k + i) / i; return r; };
 
 function frame(now) {
@@ -525,13 +515,8 @@ function frame(now) {
   Kshow += (K - Kshow) * 0.18;
   ctx.clearRect(0, 0, W, H);
   const yK = yOf(Kshow, g), yH = yOf(head, g);
-  // 1) zonas: arriba del strike el call gana (verde), abajo pierde (rojo); se encienden de izquierda a derecha
-  const za = eo(P(1500, 2600));
-  if (za > 0) {
-    const zg = c => { const z = ctx.createLinearGradient(g.now, 0, g.bar, 0); z.addColorStop(0, hexA(c, 0)); z.addColorStop(.75, hexA(c, .16 * za)); z.addColorStop(1, hexA(c, .24 * za)); return z; };
-    ctx.fillStyle = zg(COL.up); ctx.fillRect(g.now, g.top - 18, g.bar - g.now, yK - g.top + 18);
-    ctx.fillStyle = zg(COL.down); ctx.fillRect(g.now, yK, g.bar - g.now, g.bot - yK + 18);
-  }
+  // árbol de luz: sin fondos de color; el verde y el rojo solo viven en los destellos y en las hojas
+  const dark = isDark(), glowOn = dark && !RM;
   // 2) historia del precio: entra dibujándose desde la izquierda y luego se desliza; se desvanece donde está el texto
   const reach = g.now * eo(P(0, 1100));
   const grad = ctx.createLinearGradient(0, 0, g.now, 0);
@@ -547,42 +532,57 @@ function frame(now) {
   const dt = T / STEPS, u = Math.exp(SIG * Math.sqrt(dt)), d = 1 / u, p = treeP();
   const nx = i => g.now + i / STEPS * (g.end - g.now), ny = (i, j) => yOf(head * u ** j * d ** (i - j), g);
   const grow = i => eo(P(1000 + i * 170, 1000 + i * 170 + 300));
-  ctx.lineWidth = 1.2; ctx.strokeStyle = hexA(COL.ink, .16); ctx.beginPath();
+  ctx.lineWidth = 1; ctx.strokeStyle = hexA(COL.ink, dark ? .13 : .18); ctx.beginPath();
   for (let i = 0; i < STEPS; i++) {
     const k = grow(i); if (!k) break;
     for (let j = 0; j <= i; j++) { const x0 = nx(i), y0 = ny(i, j), x1 = x0 + (nx(i + 1) - x0) * k; ctx.moveTo(x0, y0); ctx.lineTo(x1, y0 + (ny(i + 1, j + 1) - y0) * k); ctx.moveTo(x0, y0); ctx.lineTo(x1, y0 + (ny(i + 1, j) - y0) * k); }
   }
   ctx.stroke();
-  for (let i = 1; i < STEPS; i++) { const k = grow(i - 1); if (k < 1) break; for (let j = 0; j <= i; j++) { ctx.fillStyle = hexA(COL.ink, .28); ctx.beginPath(); ctx.arc(nx(i), ny(i, j), 2.2, 0, 7); ctx.fill(); } }
+  for (let i = 1; i < STEPS; i++) {
+    const k = grow(i - 1); if (k < 1) break;
+    for (let j = 0; j <= i; j++) {
+      const gl = glow[i * 8 + j]; glow[i * 8 + j] *= .93;
+      ctx.fillStyle = hexA(COL.ink, .22 + gl * .7);
+      if (glowOn && gl > .05) { ctx.shadowColor = COL.ink; ctx.shadowBlur = 14 * gl; }
+      ctx.beginPath(); ctx.arc(nx(i), ny(i, j), 2 + gl * 2.2, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+    }
+  }
   // 5) hojas: verdes si el call paga, rojas si no; su tamaño es su probabilidad. A la derecha, lo que paga cada una.
-  const maxPay = Math.max(1, head * u ** STEPS - Kshow), barK = eo(P(2500, 3200));
   for (let j = 0; j <= STEPS; j++) {
     const sc = eb(P(2100 + j * 60, 2550 + j * 60)); if (!sc) continue;
-    const S = head * u ** j * d ** (STEPS - j), x = nx(STEPS), y = ny(STEPS, j), pr = comb(STEPS, j) * p ** j * (1 - p) ** (STEPS - j), win = S > Kshow;
-    const pl = Math.max(0, 1 - (now - pulse[j]) / 650), r = (4 + pr * 34 + pl * 6) * sc;
-    ctx.fillStyle = win ? COL.up : COL.down; ctx.globalAlpha = .9; ctx.beginPath(); ctx.arc(x, y, Math.max(0, r), 0, 7); ctx.fill();
-    if (pl > 0) { ctx.globalAlpha = pl * .5; ctx.lineWidth = 2; ctx.strokeStyle = win ? COL.up : COL.down; ctx.beginPath(); ctx.arc(x, y, r + 8 * (1 - pl) + 4, 0, 7); ctx.stroke(); }
+    const S = head * u ** j * d ** (STEPS - j), x = nx(STEPS), y = ny(STEPS, j), pr = comb(STEPS, j) * p ** j * (1 - p) ** (STEPS - j), win = S > Kshow, c = win ? COL.up : COL.down;
+    const pl = Math.max(0, 1 - (now - pulse[j]) / 700), r = (3.5 + pr * 30 + pl * 4) * sc;
+    if (glowOn) { ctx.globalAlpha = .16 + pl * .22; ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, narrow() ? r * 1.35 + 3 : r * 2.1 + 6, 0, 7); ctx.fill(); }
+    ctx.globalAlpha = .95; ctx.fillStyle = c; if (glowOn) { ctx.shadowColor = c; ctx.shadowBlur = 12 + pl * 22; }
+    ctx.beginPath(); ctx.arc(x, y, Math.max(0, r), 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+    if (pl > 0) { ctx.globalAlpha = pl * .55; ctx.lineWidth = 1.6; ctx.strokeStyle = c; ctx.beginPath(); ctx.arc(x, y, r + 10 * (1 - pl) + 4, 0, 7); ctx.stroke(); }
     ctx.globalAlpha = 1;
-    const x0 = x + 18, len = win ? (S - Kshow) / maxPay * (g.bar - x0) * barK : 0;
-    if (win && barK > 0) { ctx.fillStyle = COL.up; roundBar(x0, y - 3.5, Math.max(2, len), 7); }
-    else if (barK > 0) { ctx.fillStyle = hexA(COL.down, .7 * barK); ctx.fillRect(x0, y - 1, 10, 2); }
   }
   // 6) strike: línea azul punteada que el usuario mueve con el cursor
   const kk = eo(P(2200, 2900));
   if (kk > 0) { ctx.setLineDash([7, 6]); ctx.strokeStyle = COL.ex; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(g.now, yK); ctx.lineTo(g.now + (g.bar - g.now) * kk, yK); ctx.stroke(); ctx.setLineDash([]); }
   // 7) los futuros viajando, con estela; al acercarse al vencimiento toman el color de su resultado
   const pa = P(2900, 3600);
+  if (glowOn) ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
   for (const q of parts) {
     if (running && !RM && pa > 0) q.t += q.sp * 0.016 * (STEPS / 2.6);
     if (q.t >= STEPS) { const j = q.path.reduce((a, b) => a + b, 0); pulse[j] = now; Object.assign(q, newPart(0)); }
     if (q.t < 0 || pa <= 0) continue;
     const i = Math.floor(q.t), fr = q.t - i, j0 = q.path.slice(0, i).reduce((a, b) => a + b, 0), j1 = j0 + (q.path[i] || 0);
     const x = nx(i) + (nx(Math.min(i + 1, STEPS)) - nx(i)) * fr, y = ny(i, j0) + (ny(Math.min(i + 1, STEPS), j1) - ny(i, j0)) * fr;
+    if (i > 0 && fr < .12) glow[i * 8 + j0] = 1;
     const fin = q.t / STEPS, c = fin > .55 ? (sOf(y, g) > Kshow ? COL.up : COL.down) : COL.ink, fade = Math.min(1, (now - q.born) / 400) * pa;
-    if (q.px != null && Math.abs(q.px - x) < 40) { ctx.globalAlpha = (.18 + .3 * fin) * fade; ctx.strokeStyle = c; ctx.lineWidth = 2.6; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(q.px - (x - q.px) * 3, q.py - (y - q.py) * 3); ctx.lineTo(x, y); ctx.stroke(); }
-    ctx.globalAlpha = (.45 + .5 * fin) * fade; ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, 2.6 + fin * 1.2, 0, 7); ctx.fill();
+    const tr = q.tr || (q.tr = []); if (tr.length && Math.abs(tr[tr.length - 1][0] - x) > 40) tr.length = 0;
+    tr.push([x, y]); if (tr.length > 18) tr.shift();
+    ctx.strokeStyle = c;
+    for (let k = 1; k < tr.length; k++) { const a = k / tr.length; ctx.globalAlpha = a * (.25 + .45 * fin) * fade; ctx.lineWidth = .6 + 2.4 * a; ctx.beginPath(); ctx.moveTo(tr[k - 1][0], tr[k - 1][1]); ctx.lineTo(tr[k][0], tr[k][1]); ctx.stroke(); }
+    ctx.fillStyle = c;
+    if (glowOn) { ctx.globalAlpha = .18 * fade; ctx.beginPath(); ctx.arc(x, y, 7 + fin * 2, 0, 7); ctx.fill(); }   // halo barato en vez de sombra borrosa
+    ctx.globalAlpha = (.55 + .45 * fin) * fade; ctx.beginPath(); ctx.arc(x, y, 2.2 + fin * 1.2, 0, 7); ctx.fill();
     q.px = x; q.py = y;
   }
+  ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
   // 8) huellas del precio: cada cambio sube (verde) o baja (rojo) desde el punto de hoy y se desvanece
   ctx.font = `600 12px ${getComputedStyle(document.body).getPropertyValue('--f-mono') || 'monospace'}`; ctx.textAlign = 'right';
@@ -607,6 +607,8 @@ function frame(now) {
   place(tagK, g.bar - tagK.offsetWidth, yK - 30, P(2600, 3000));
   place(tagS, g.now - tagS.offsetWidth - 16, yH - 13, P(1200, 1600));
 }
+// tema oscuro: los destellos brillan (se suman como luz); en claro se ven como trazos de color normales
+function isDark() { const m = hexA(COL.bg || '#000', 1).match(/[\d.]+/g); return !m || (+m[0] * .3 + +m[1] * .59 + +m[2] * .11) < 128; }
 function roundBar(x, y, w, h) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, 3.5) : ctx.rect(x, y, w, h); ctx.fill(); }
 function place(el, x, y, o = 1) { el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`; el.style.opacity = o; }
 function hexA(c, a) { // color de una variable CSS con transparencia
@@ -689,31 +691,6 @@ function chainMark() { $$('tr', chBody).forEach(tr => tr.classList.toggle('sel',
 chBody.addEventListener('click', e => { const tr = e.target.closest('tr'); if (tr) { setKval(+tr.dataset.k); flashRow(tr); } });
 chBody.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('tr')) { e.preventDefault(); setKval(+e.target.dataset.k); flashRow(e.target); } });
 const flashRow = tr => !RM && tr.animate([{ transform: 'scale(1.02)' }, { transform: 'none' }], { duration: 380, easing: 'cubic-bezier(.16,1,.3,1)' });
-
-// ---------- final: la gráfica gigante se dibuja mientras bajas ----------
-(function finale() {
-  const svg = $('#finSvg'), zy = 300, kx = 560;
-  // un call comprado: plano y en rojo (pierdes la prima) hasta K; después sube en verde sin techo
-  svg.innerHTML = `<defs><clipPath id="fu"><rect x="0" y="0" width="1200" height="${zy}"/></clipPath><clipPath id="fd"><rect x="0" y="${zy}" width="1200" height="200"/></clipPath>
-    <linearGradient id="fg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--up)" stop-opacity=".22"/><stop offset="1" stop-color="var(--up)" stop-opacity="0"/></linearGradient></defs>
-    <line class="f-zero" x1="0" x2="1200" y1="${zy}" y2="${zy}"/><line class="f-k" x1="${kx}" x2="${kx}" y1="40" y2="410"/>`;
-  const xe = 1172, d = `M0 ${zy + 34} L${kx} ${zy + 34} L${xe} ${zy + 34 - (xe - kx) * .55}`;   // termina antes del borde para que el punto se vea completo
-  const area = E('path', { class: 'f-area', d: `${d} L${xe} ${zy} L${kx + 62} ${zy} Z`, fill: 'url(#fg)', 'clip-path': 'url(#fu)' }, svg);
-  const lu = E('path', { class: 'f-line up', d, 'clip-path': 'url(#fu)', pathLength: 1 }, svg), ld = E('path', { class: 'f-line dn', d, 'clip-path': 'url(#fd)', pathLength: 1 }, svg);
-  const dot = $('#finDot');
-  const geom = lu.getTotalLength ? lu : null;
-  const sec = $('#final');
-  let ticking = false;
-  const upd = () => {
-    ticking = false;
-    const r = sec.getBoundingClientRect(), k = RM ? 1 : clamp((innerHeight - r.top) / (r.height + innerHeight * .2), 0, 1), e2 = eo(k);
-    [lu, ld].forEach(p => { p.style.strokeDasharray = '1 1'; p.style.strokeDashoffset = 1 - e2; });
-    area.style.opacity = clamp((e2 - .6) / .3, 0, 1);
-    if (geom) { const L = geom.getTotalLength(), pt = geom.getPointAtLength(L * e2), sr = svg.getBoundingClientRect(), fr = sec.getBoundingClientRect(); dot.style.transform = `translate(${(sr.left - fr.left + pt.x / 1200 * sr.width).toFixed(1)}px,${(sr.top - fr.top + pt.y / 420 * sr.height).toFixed(1)}px)`; dot.className = 'f-dot ' + (pt.y < zy ? 'up' : 'dn'); dot.style.opacity = e2 > .01 ? 1 : 0; }
-  };
-  addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(upd); } }, { passive: true });
-  addEventListener('resize', upd); upd();
-})();
 
 // ---------- botones magnéticos: se acercan un poco al cursor ----------
 if (!RM && matchMedia('(pointer: fine)').matches) $$('.btn.big').forEach(b => {
